@@ -39,6 +39,13 @@ function startPrizeDistribution() {
       return;
     }
     
+    // **最初にユーザーに通知**
+    ui.alert('処理を開始します', 
+      '特典配布処理を開始します。処理は自動的に継続されます。\n' +
+      '処理状況は「デバッグ情報」シートで確認できます。\n\n' +
+      '処理中はスプレッドシートを開いたままにしておいてください。', 
+      ui.ButtonSet.OK);
+    
     // 処理状態を初期化
     const scriptProperties = PropertiesService.getScriptProperties();
     scriptProperties.setProperty('processingState', JSON.stringify({
@@ -49,7 +56,8 @@ function startPrizeDistribution() {
       successCount: 0,
       errorCount: 0,
       startTime: timestamp.getTime(),
-      lastProcessedTime: timestamp.getTime()
+      lastProcessedTime: timestamp.getTime(),
+      notificationShown: true  // 通知表示済みのフラグを追加
     }));
     
     // デバッグシートの初期化
@@ -58,11 +66,7 @@ function startPrizeDistribution() {
     // 最初のバッチ処理を開始
     continuePrizeDistribution();
     
-    ui.alert('処理を開始しました', 
-      '特典配布処理を開始しました。処理は自動的に継続されます。\n' +
-      '処理状況は「デバッグ情報」シートで確認できます。\n\n' +
-      '処理中はスプレッドシートを開いたままにしておいてください。', 
-      ui.ButtonSet.OK);
+    // 通知は既に表示したので二重表示しない
     
   } catch (error) {
     ui.alert('エラー', '処理開始中にエラーが発生しました: ' + error.message, ui.ButtonSet.OK);
@@ -300,38 +304,38 @@ function continuePrizeDistribution() {
     state.errorCount += batchErrorCount;
     state.lastProcessedTime = new Date().getTime();
     
-    // 全ての処理が完了したかチェック
-    if (endIndex >= data.length) {
-      // 処理完了
-      scriptProperties.deleteProperty('processingState');
-      scriptProperties.deleteProperty('prizeFilesMap');
-      
-      // 完了情報をデバッグシートに追加
-      debugSheet.appendRow(['']);
-      debugSheet.appendRow(['処理完了時刻', Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')]);
-      debugSheet.appendRow(['合計処理リスナー数', state.totalCount]);
-      debugSheet.appendRow(['成功数', state.successCount]);
-      debugSheet.appendRow(['エラー数', state.errorCount]);
-      debugSheet.appendRow(['出力フォルダURL', `https://drive.google.com/drive/folders/${state.outputFolderId}`]);
-      
-      // UI経由で実行された場合は完了メッセージを表示
-      try {
-        const ui = SpreadsheetApp.getUi();
-        ui.alert(
-          '処理完了', 
-          `特典ファイルのフォルダ化が完了しました。\n\n` +
-          `成功: ${state.successCount}件\n` +
-          `不足/エラー: ${state.errorCount}件\n\n` +
-          `出力フォルダ: ${outputFolder.getName()}\n` +
-          `フォルダURL: https://drive.google.com/drive/folders/${state.outputFolderId}\n\n` +
-          `詳細なデバッグ情報は「デバッグ情報」シートを確認してください。`,
-          ui.ButtonSet.OK
-        );
-      } catch (e) {
-        // UIがない場合は無視（時間トリガーからの実行時など）
-        console.log('処理が完了しました');
-      }
-    } else {
+// 全ての処理が完了したかチェック
+if (endIndex >= data.length) {
+  // 処理完了
+  scriptProperties.deleteProperty('processingState');
+  scriptProperties.deleteProperty('prizeFilesMap');
+  
+  // 完了情報をデバッグシートに追加
+  debugSheet.appendRow(['']);
+  debugSheet.appendRow(['処理完了時刻', Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')]);
+  debugSheet.appendRow(['合計処理リスナー数', state.totalCount]);
+  debugSheet.appendRow(['成功数', state.successCount]);
+  debugSheet.appendRow(['エラー数', state.errorCount]);
+  debugSheet.appendRow(['出力フォルダURL', `https://drive.google.com/drive/folders/${state.outputFolderId}`]);
+  
+  // UI経由で実行された場合は完了メッセージを表示
+  try {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert(
+      '処理完了', 
+      `特典ファイルのフォルダ化が完了しました。\n\n` +
+      `成功: ${state.successCount}件\n` +
+      `不足/エラー: ${state.errorCount}件\n\n` +
+      `出力フォルダ: ${outputFolder.getName()}\n` +
+      `フォルダURL: https://drive.google.com/drive/folders/${state.outputFolderId}\n\n` +
+      `詳細なデバッグ情報は「デバッグ情報」シートを確認してください。`,
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    // UIがない場合は無視（時間トリガーからの実行時など）
+    console.log('処理が完了しました');
+  }
+} else {
       // まだ処理すべきリスナーが残っている
       scriptProperties.setProperty('processingState', JSON.stringify(state));
       
@@ -461,18 +465,4 @@ function cancelPrizeDistribution() {
     
     ui.alert('処理をキャンセルしました', '特典配布処理がキャンセルされました。', ui.ButtonSet.OK);
   }
-}
-
-/**
- * メニューをスプレッドシートに追加
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('ガチャ特典配布管理')
-    .addItem('0:初期設定', 'setupTool')
-    .addItem('1:ガチャ結果を解析', 'parseAndCreateDistributionList')
-    .addItem('2:特典ファイルをフォルダ化', 'startPrizeDistribution')
-    .addItem('フォルダ化処理をキャンセル', 'cancelPrizeDistribution')
-    .addItem('(未実装)Discord送信', 'sendDiscordMessages')
-    .addToUi();
 }
